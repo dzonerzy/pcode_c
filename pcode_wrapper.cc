@@ -107,10 +107,10 @@ extern "C"
         return mapToRegisterInfoListC(regmap);
     }
 
-    const char *pcode_context_get_register_name(PcodeContext *ctx, AddrSpaceC *space, uint8_t offset, uint32_t size)
+    const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, uint8_t offset, uint32_t size)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        return context->m_sleigh->getRegisterName(reinterpret_cast<AddrSpace *>(space->n_space), offset, size).c_str();
+        return context->m_sleigh->getRegisterName(reinterpret_cast<AddrSpace *>(space), offset, size).c_str();
     }
 
     PcodeDisassemblyC *pcode_disassemble(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, uint64_t address, unsigned int max_instructions)

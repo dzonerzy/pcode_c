@@ -99,7 +99,7 @@ extern "C"
     void pcode_context_free(PcodeContext *ctx);
     void pcode_context_set_variable_default(PcodeContext *ctx, const char *nm, uint32_t val);
     RegisterInfoListC *pcode_context_get_all_registers(PcodeContext *ctx);
-    const char *pcode_context_get_register_name(PcodeContext *ctx, AddrSpaceC *space, uint8_t offset, uint32_t size);
+    const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, uint8_t offset, uint32_t size);
 
     // Disassemble code
     PcodeDisassemblyC *pcode_disassemble(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, uint64_t address, unsigned int max_instructions);
