@@ -116,7 +116,16 @@ extern "C"
     PcodeDisassemblyC *pcode_disassemble(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, uint64_t address, unsigned int max_instructions)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        std::unique_ptr<Disassembly> disassembly = context->disassemble(bytes, num_bytes, address, max_instructions);
+        std::unique_ptr<Disassembly> disassembly;
+
+        try
+        {
+            disassembly = context->disassemble(bytes, num_bytes, address, max_instructions);
+        }
+        catch (const ghidra::LowlevelError &e)
+        {
+            return NULL;
+        }
 
         PcodeDisassemblyC *result = (PcodeDisassemblyC *)malloc(sizeof(PcodeDisassemblyC));
         result->num_instructions = disassembly->m_instructions.size();
@@ -132,6 +141,7 @@ extern "C"
             ins_c.mnemonic = strdup(ins.m_mnem.c_str());
             ins_c.body = strdup(ins.m_body.c_str());
         }
+
         return result;
     }
 
@@ -150,7 +160,16 @@ extern "C"
     PcodeTranslationC *pcode_translate(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, uint64_t base_address, unsigned int max_instructions, uint32_t flags)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        std::unique_ptr<Translation> translation = context->translate(bytes, num_bytes, base_address, max_instructions, flags);
+        std::unique_ptr<Translation> translation;
+
+        try
+        {
+            translation = context->translate(bytes, num_bytes, base_address, max_instructions, flags);
+        }
+        catch (const ghidra::LowlevelError &e)
+        {
+            return NULL;
+        }
 
         PcodeTranslationC *result = (PcodeTranslationC *)malloc(sizeof(PcodeTranslationC));
         result->num_ops = translation->m_ops.size();
