@@ -160,7 +160,7 @@ extern "C"
     PcodeTranslationC *pcode_translate(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, uint64_t base_address, unsigned int max_instructions, uint32_t flags)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        std::unique_ptr<Translation> translation;
+        std::unique_ptr<Translation> translation = nullptr;
 
         try
         {
@@ -179,6 +179,8 @@ extern "C"
         {
             PcodeOp &op = translation->m_ops[i];
             PcodeOpC &op_c = result->ops[i];
+
+            op_c.opcode = op.m_opcode;
 
             if (op.m_output)
             {

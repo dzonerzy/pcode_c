@@ -56,18 +56,14 @@ int main()
     }
 
     PcodeContext *ctx = pcode_context_create(sla_bytes, sla_size);
+
+    pcode_context_set_variable_default(ctx, "addrsize", 1);
+    pcode_context_set_variable_default(ctx, "opsize", 1);
+
     const char *bytes = "\x90\x90\xc3"; // Example machine code
     unsigned int num_bytes = 3;
     uint64_t address = 0x1000;
     unsigned int max_instructions = 3;
-
-    RegisterInfoListC *registers = pcode_context_get_all_registers(ctx);
-    printf("Got %u registers\n", registers->count);
-    for (unsigned int i = 0; i < registers->count; i++)
-    {
-        RegisterInfoC reg = registers->registers[i];
-        printf("Register: %s, Space: %s, Offset: 0x%x, Size: %u\n", reg.name, reg.varnode.space->name, reg.varnode.offset, reg.varnode.size);
-    }
 
     // Disassemble
     PcodeDisassemblyC *disassembly = pcode_disassemble(ctx, bytes, num_bytes, address, max_instructions);
@@ -83,7 +79,7 @@ int main()
     pcode_disassembly_free(disassembly);
 
     // Translate
-    PcodeTranslationC *translation = pcode_translate(ctx, bytes, num_bytes, address, max_instructions, 0);
+    PcodeTranslationC *translation = pcode_translate(ctx, bytes, num_bytes, address, max_instructions, bb_terminating);
     unsigned int op_count = translation->num_ops;
 
     printf("Translated %u Pcode operations\n", op_count);
