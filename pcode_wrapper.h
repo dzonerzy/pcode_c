@@ -57,7 +57,7 @@ extern "C"
     typedef struct
     {
         uint32_t opcode;
-        VarnodeDataC *output;
+        VarnodeDataC output;
         VarnodeDataC *inputs;
         uint32_t num_inputs;
     } PcodeOpC;
