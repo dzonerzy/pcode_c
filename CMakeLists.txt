@@ -9,8 +9,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-if(MSVC)
-  add_compile_options(/O2 /D_HAS_STD_BYTE=0 /DLOCAL_ZLIB=1 /DNO_GZIP=1)
+
+
+if(WIN32)
+add_compile_options(-D_WINDOWS=1 -O3 -Wall -Wno-sign-compare -D__TERMINAL__ -DLOCAL_ZLIB=1 -DNO_GZIP=1)
 else()
   add_compile_options(-O3 -Wall -Wno-sign-compare -D__TERMINAL__ -DLOCAL_ZLIB=1 -DNO_GZIP=1)
 endif()

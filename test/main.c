@@ -1,7 +1,14 @@
 // main.c
 
+#if _WINDOWS
+#include <windows.h>
+#endif
 #include <stdio.h>
 #include <pcode_wrapper.h>
+
+#if _WINDOWS
+#define malloc(size) HeapAlloc(GetProcessHeap(), 0, size)
+#endif
 
 unsigned char *readSlaFile(const char *path, size_t *size)
 {
@@ -61,7 +68,7 @@ int main()
     for (unsigned int i = 0; i < instruction_count; i++)
     {
         DisassemblyInstructionC instruction = disassembly->instructions[i];
-        printf("0x%lx: %s %s\n", instruction.address, instruction.mnemonic, instruction.body);
+        printf("0x%llx: %s %s\n", instruction.address, instruction.mnemonic, instruction.body);
     }
 
     pcode_disassembly_free(disassembly);
