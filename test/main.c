@@ -93,7 +93,7 @@ int main()
         printf("Opcode: %u\n", op.opcode);
         if (op.output)
         {
-            printf("Output: %s, Offset: 0x%x, Size: %u\n", op.output->space->name, op.output->offset, op.output->size);
+            printf("Output: %s, Offset: 0x%x, Size: %u\n", op.output.space->name, op.output.offset, op.output.size);
         }
         printf("Inputs:\n");
         for (unsigned int j = 0; j < op.num_inputs; j++)
