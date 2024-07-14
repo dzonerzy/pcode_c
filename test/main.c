@@ -47,7 +47,7 @@ unsigned char *readSlaFile(const char *path, size_t *size)
 int main()
 {
     size_t sla_size;
-    unsigned char *sla_bytes = readSlaFile("/mnt/c/Users/dzonerzy/AppData/Local/Programs/Python/Python311/Lib/site-packages/pypcode/processors/x86/data/languages/x86.sla", &sla_size);
+    unsigned char *sla_bytes = readSlaFile("..\\processors\\x86\\data\\languages\\x86.sla", &sla_size);
 
     if (!sla_bytes)
     {
@@ -56,10 +56,10 @@ int main()
     }
 
     PcodeContext *ctx = pcode_context_create(sla_bytes, sla_size);
-    const char *bytes = "\x55\x48\x8b\x05\xb8\x13\x00\x00"; // Example machine code
-    unsigned int num_bytes = 8;
+    const char *bytes = "\x90\x90\xc3"; // Example machine code
+    unsigned int num_bytes = 3;
     uint64_t address = 0x1000;
-    unsigned int max_instructions = 10;
+    unsigned int max_instructions = 3;
 
     RegisterInfoListC *registers = pcode_context_get_all_registers(ctx);
     printf("Got %u registers\n", registers->count);
@@ -92,7 +92,10 @@ int main()
         PcodeOpC op = translation->ops[i];
         printf("Opcode: %u\n", op.opcode);
 
-        printf("Output: %s, Offset: 0x%x, Size: %u\n", op.output.space->name, op.output.offset, op.output.size);
+        if (op.output)
+        {
+            printf("Output: %s, Offset: 0x%x, Size: %u\n", op.output->space->name, op.output->offset, op.output->size);
+        }
 
         printf("Inputs:\n");
         for (unsigned int j = 0; j < op.num_inputs; j++)

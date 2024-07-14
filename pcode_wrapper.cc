@@ -180,10 +180,14 @@ extern "C"
             PcodeOp &op = translation->m_ops[i];
             PcodeOpC &op_c = result->ops[i];
 
-            op_c.opcode = op.m_opcode;
             if (op.m_output)
             {
-                op_c.output = varnodeDataToC(*op.m_output);
+                op_c.output = (VarnodeDataC *)malloc(sizeof(VarnodeDataC));
+                *op_c.output = varnodeDataToC(*op.m_output);
+            }
+            else
+            {
+                op_c.output = NULL;
             }
 
             op_c.num_inputs = op.m_inputs.size();
@@ -201,13 +205,17 @@ extern "C"
         for (uint32_t i = 0; i < trans->num_ops; ++i)
         {
             PcodeOpC &op_c = trans->ops[i];
-
+            if (op_c.output)
+            {
+                free((void *)op_c.output->space->name);
+                free(op_c.output->space);
+                free(op_c.output);
+            }
             for (uint32_t j = 0; j < op_c.num_inputs; ++j)
             {
                 free((void *)op_c.inputs[j].space->name);
                 free(op_c.inputs[j].space);
             }
-
             free(op_c.inputs);
         }
         free(trans->ops);
