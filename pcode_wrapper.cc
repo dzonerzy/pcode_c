@@ -107,7 +107,7 @@ extern "C"
         return mapToRegisterInfoListC(regmap);
     }
 
-    const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, uint8_t offset, uint32_t size)
+    const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, uint8_t offset, int32_t size)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
         return context->m_sleigh->getRegisterName(reinterpret_cast<AddrSpace *>(space), offset, size).c_str();
@@ -224,10 +224,10 @@ extern "C"
         free(trans);
     }
 
-    const char *pcode_varcode_get_register_name(VarnodeDataC *node)
+    const char *pcode_varcode_get_register_name(NativeAddrSpace *space, uint8_t offset, int32_t size)
     {
-        ghidra::AddrSpace *space = reinterpret_cast<ghidra::AddrSpace *>(node->space->n_space);
-        return space->getTrans()->getRegisterName(space, node->offset, node->size).c_str();
+        ghidra::AddrSpace *addr_space = reinterpret_cast<ghidra::AddrSpace *>(space);
+        return addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str();
     }
 
 } // extern "C"
