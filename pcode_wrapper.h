@@ -109,6 +109,9 @@ extern "C"
     PcodeTranslationC *pcode_translate(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, uint64_t base_address, unsigned int max_instructions, uint32_t flags);
     void pcode_translation_free(PcodeTranslationC *trans);
 
+    // VarNode code
+    const char *pcode_varcode_get_register_name(VarnodeDataC *node);
+
 #ifdef __cplusplus
 }
 #endif

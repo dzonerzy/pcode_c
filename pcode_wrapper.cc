@@ -224,4 +224,10 @@ extern "C"
         free(trans);
     }
 
+    const char *pcode_varcode_get_register_name(VarnodeDataC *node)
+    {
+        ghidra::AddrSpace *space = reinterpret_cast<ghidra::AddrSpace *>(node->space->n_space);
+        return space->getTrans()->getRegisterName(space, node->offset, node->size).c_str();
+    }
+
 } // extern "C"
