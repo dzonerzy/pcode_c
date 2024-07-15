@@ -22,8 +22,6 @@ AddrSpaceC *addrSpaceToC(AddrSpace *addr_space, ghidra::uintb offset, ghidra::ui
     addr_space_c->pointer_lower_bound = addr_space->getPointerLowerBound();
     addr_space_c->pointer_upper_bound = addr_space->getPointerUpperBound();
 
-    addr_space_c->register_name = addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str();
-
     if (addr_space->isBigEndian())
         addr_space_c->flags |= big_endian;
     if (addr_space->isHeritaged())
@@ -107,13 +105,13 @@ extern "C"
         return mapToRegisterInfoListC(regmap);
     }
 
-    const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, uint8_t offset, int32_t size)
+    const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, unsigned long long offset, int32_t size)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
         return context->m_sleigh->getRegisterName(reinterpret_cast<AddrSpace *>(space), offset, size).c_str();
     }
 
-    PcodeDisassemblyC *pcode_disassemble(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, uint64_t address, unsigned int max_instructions)
+    PcodeDisassemblyC *pcode_disassemble(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, unsigned long long address, unsigned int max_instructions)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
         std::unique_ptr<Disassembly> disassembly;
@@ -157,7 +155,7 @@ extern "C"
         free(disas);
     }
 
-    PcodeTranslationC *pcode_translate(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, uint64_t base_address, unsigned int max_instructions, uint32_t flags)
+    PcodeTranslationC *pcode_translate(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, unsigned long long base_address, unsigned int max_instructions, uint32_t flags)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
         std::unique_ptr<Translation> translation = nullptr;
@@ -224,7 +222,7 @@ extern "C"
         free(trans);
     }
 
-    const char *pcode_varcode_get_register_name(NativeAddrSpace *space, uint8_t offset, int32_t size)
+    const char *pcode_varcode_get_register_name(NativeAddrSpace *space, unsigned long long offset, int32_t size)
     {
         ghidra::AddrSpace *addr_space = reinterpret_cast<ghidra::AddrSpace *>(space);
         return addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str();

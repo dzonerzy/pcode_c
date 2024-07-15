@@ -90,13 +90,13 @@ int main()
 
         if (op.output)
         {
-            printf("Output: %s, Offset: 0x%x, Size: %u\n", op.output->space->name, op.output->offset, op.output->size);
+            printf("Output: %s, Offset: 0x%llx, Size: %u\n", op.output->space->name, op.output->offset, op.output->size);
         }
 
         printf("Inputs:\n");
         for (unsigned int j = 0; j < op.num_inputs; j++)
         {
-            printf("\tSpace: %s, Offset: 0x%x, Size: %u\n", op.inputs[j].space->name, op.inputs[j].offset, op.inputs[j].size);
+            printf("\tSpace: %s, Offset: 0x%llx, Size: %u\n", op.inputs[j].space->name, op.inputs[j].offset, op.inputs[j].size);
         }
     }
 
