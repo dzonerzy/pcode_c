@@ -11,7 +11,7 @@ std::vector<uint8_t> convertToVector(const unsigned char *data, size_t size)
 }
 
 // Utility function to convert AddrSpace to AddrSpaceC
-AddrSpaceC *addrSpaceToC(AddrSpace *addr_space, ghidra::uintb offset, ghidra::uint4 size)
+AddrSpaceC *addrSpaceToC(AddrSpace *addr_space)
 {
     AddrSpaceC *addr_space_c = (AddrSpaceC *)malloc(sizeof(AddrSpaceC));
     addr_space_c->name = strdup(addr_space->getName().c_str());
@@ -54,7 +54,7 @@ AddrSpaceC *addrSpaceToC(AddrSpace *addr_space, ghidra::uintb offset, ghidra::ui
 VarnodeDataC varnodeDataToC(const VarnodeData &varnode)
 {
     VarnodeDataC varnode_c;
-    varnode_c.space = addrSpaceToC(varnode.space, varnode.offset, varnode.size);
+    varnode_c.space = addrSpaceToC(varnode.space);
     varnode_c.offset = varnode.offset;
     varnode_c.size = varnode.size;
     return varnode_c;
@@ -226,6 +226,12 @@ extern "C"
     {
         ghidra::AddrSpace *addr_space = reinterpret_cast<ghidra::AddrSpace *>(space);
         return addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str();
+    }
+
+    AddrSpaceC *pcode_varnode_get_space_from_const(uint64_t offset)
+    {
+        ghidra::AddrSpace *space = (AddrSpace *)(uintp)offset;
+        return addrSpaceToC(space);
     }
 
 } // extern "C"
