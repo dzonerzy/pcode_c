@@ -223,7 +223,7 @@ extern "C"
     const char *pcode_varcode_get_register_name(NativeAddrSpace *space, unsigned long long offset, int32_t size)
     {
         ghidra::AddrSpace *addr_space = reinterpret_cast<ghidra::AddrSpace *>(space);
-        return addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str();
+        return strdup(addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str());
     }
 
     AddrSpaceC *pcode_varnode_get_space_from_const(uint64_t offset)
