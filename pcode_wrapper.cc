@@ -51,13 +51,11 @@ AddrSpaceC *addrSpaceToC(AddrSpace *addr_space)
 }
 
 // Utility function to convert VarnodeData to VarnodeDataC
-VarnodeDataC varnodeDataToC(const VarnodeData &varnode)
+void varnodeDataToC(VarnodeDataC *varnode_c, const VarnodeData &varnode)
 {
-    VarnodeDataC varnode_c;
-    varnode_c.space = addrSpaceToC(varnode.space);
-    varnode_c.offset = varnode.offset;
-    varnode_c.size = varnode.size;
-    return varnode_c;
+    varnode_c->space = addrSpaceToC(varnode.space);
+    varnode_c->offset = varnode.offset;
+    varnode_c->size = varnode.size;
 }
 
 // Utility function to convert map<VarnodeData, string> to RegisterInfoListC
@@ -70,7 +68,7 @@ RegisterInfoListC *mapToRegisterInfoListC(const std::map<VarnodeData, std::strin
     uint32_t i = 0;
     for (const auto &pair : regmap)
     {
-        reg_list->registers[i].varnode = varnodeDataToC(pair.first);
+        varnodeDataToC(&reg_list->registers[i].varnode, pair.first);
         reg_list->registers[i].name = strdup(pair.second.c_str());
         i++;
     }
@@ -183,7 +181,7 @@ extern "C"
             if (op.m_output)
             {
                 op_c.output = (VarnodeDataC *)malloc(sizeof(VarnodeDataC));
-                *op_c.output = varnodeDataToC(*op.m_output);
+                varnodeDataToC(op_c.output, *op.m_output);
             }
             else
             {
@@ -194,7 +192,7 @@ extern "C"
             op_c.inputs = (VarnodeDataC *)malloc(op_c.num_inputs * sizeof(VarnodeDataC));
             for (uint32_t j = 0; j < op_c.num_inputs; ++j)
             {
-                op_c.inputs[j] = varnodeDataToC(op.m_inputs[j]);
+                varnodeDataToC(&op_c.inputs[j], op.m_inputs[j]);
             }
         }
         return result;
