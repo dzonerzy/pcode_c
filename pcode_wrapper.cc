@@ -226,7 +226,7 @@ extern "C"
         return strdup(addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str());
     }
 
-    AddrSpaceC *pcode_varnode_get_space_from_const(uint64_t offset)
+    AddrSpaceC *pcode_varnode_get_space_from_const(unsigned long long offset)
     {
         ghidra::AddrSpace *space = (AddrSpace *)(uintp)offset;
         return addrSpaceToC(space);
