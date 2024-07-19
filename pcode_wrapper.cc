@@ -51,13 +51,11 @@ AddrSpaceC *addrSpaceToC(AddrSpace *addr_space)
 }
 
 // Utility function to convert VarnodeData to VarnodeDataC
-VarnodeDataC varnodeDataToC(const VarnodeData &varnode)
+void varnodeDataToC(VarnodeDataC *varnode_c, const VarnodeData &varnode)
 {
-    VarnodeDataC varnode_c;
-    varnode_c.space = addrSpaceToC(varnode.space);
-    varnode_c.offset = varnode.offset;
-    varnode_c.size = varnode.size;
-    return varnode_c;
+    varnode_c->space = addrSpaceToC(varnode.space);
+    varnode_c->offset = varnode.offset;
+    varnode_c->size = varnode.size;
 }
 
 // Utility function to convert map<VarnodeData, string> to RegisterInfoListC
@@ -70,7 +68,7 @@ RegisterInfoListC *mapToRegisterInfoListC(const std::map<VarnodeData, std::strin
     uint32_t i = 0;
     for (const auto &pair : regmap)
     {
-        reg_list->registers[i].varnode = varnodeDataToC(pair.first);
+        varnodeDataToC(&reg_list->registers[i].varnode, pair.first);
         reg_list->registers[i].name = strdup(pair.second.c_str());
         i++;
     }
@@ -108,7 +106,7 @@ extern "C"
     const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, unsigned long long offset, int32_t size)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        return context->m_sleigh->getRegisterName(reinterpret_cast<AddrSpace *>(space), offset, size).c_str();
+        return strdup(context->m_sleigh->getRegisterName(reinterpret_cast<AddrSpace *>(space), offset, size).c_str());
     }
 
     PcodeDisassemblyC *pcode_disassemble(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, unsigned long long address, unsigned int max_instructions)
@@ -183,7 +181,7 @@ extern "C"
             if (op.m_output)
             {
                 op_c.output = (VarnodeDataC *)malloc(sizeof(VarnodeDataC));
-                *op_c.output = varnodeDataToC(*op.m_output);
+                varnodeDataToC(op_c.output, *op.m_output);
             }
             else
             {
@@ -194,7 +192,7 @@ extern "C"
             op_c.inputs = (VarnodeDataC *)malloc(op_c.num_inputs * sizeof(VarnodeDataC));
             for (uint32_t j = 0; j < op_c.num_inputs; ++j)
             {
-                op_c.inputs[j] = varnodeDataToC(op.m_inputs[j]);
+                varnodeDataToC(&op_c.inputs[j], op.m_inputs[j]);
             }
         }
         return result;
@@ -225,7 +223,7 @@ extern "C"
     const char *pcode_varcode_get_register_name(NativeAddrSpace *space, unsigned long long offset, int32_t size)
     {
         ghidra::AddrSpace *addr_space = reinterpret_cast<ghidra::AddrSpace *>(space);
-        return addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str();
+        return strdup(addr_space->getTrans()->getRegisterName(addr_space, offset, size).c_str());
     }
 
     AddrSpaceC *pcode_varnode_get_space_from_const(uint64_t offset)
