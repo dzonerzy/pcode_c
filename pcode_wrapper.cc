@@ -106,7 +106,7 @@ extern "C"
     const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, unsigned long long offset, int32_t size)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        return context->m_sleigh->getRegisterName(reinterpret_cast<AddrSpace *>(space), offset, size).c_str();
+        return strdup(context->m_sleigh->getRegisterName(reinterpret_cast<AddrSpace *>(space), offset, size).c_str());
     }
 
     PcodeDisassemblyC *pcode_disassemble(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, unsigned long long address, unsigned int max_instructions)
