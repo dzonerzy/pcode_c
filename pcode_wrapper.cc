@@ -5,9 +5,15 @@
 #include <cstdlib>
 #include <sstream>
 
+namespace PcodeMemoryPools
+{
+    static MemoryPool<VarnodeDataC> varnodePool;
+    static MemoryPool<PcodeOpC> pcodeOpPool;
+}
+
 std::vector<uint8_t> convertToVector(const unsigned char *data, size_t size)
 {
-    return std::vector<uint8_t>(data, data + size);
+    return {data, data + size};
 }
 
 // Utility function to convert AddrSpace to AddrSpaceC

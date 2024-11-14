@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "memory_pool.h"
 
 #ifdef __cplusplus
 extern "C"
