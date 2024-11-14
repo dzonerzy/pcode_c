@@ -47,7 +47,14 @@ unsigned char *readSlaFile(const char *path, size_t *size)
 int main()
 {
     size_t sla_size;
+    // if windows, use "..\\processors\\x86\\data\\languages\\x86.sla"
+    // if linux, use "../processors/x86/data/languages/x86.sla"
+
+#if _WINDOWS
     unsigned char *sla_bytes = readSlaFile("..\\processors\\x86\\data\\languages\\x86.sla", &sla_size);
+#else
+    unsigned char *sla_bytes = readSlaFile("../processors/x86/data/languages/x86.sla", &sla_size);
+#endif
 
     if (!sla_bytes)
     {
@@ -60,10 +67,10 @@ int main()
     pcode_context_set_variable_default(ctx, "addrsize", 1);
     pcode_context_set_variable_default(ctx, "opsize", 1);
 
-    const char *bytes = "\x90\x90\xc3"; // Example machine code
-    unsigned int num_bytes = 3;
+    const char *bytes = "\x55\x8b\xec\x83\xec\x08\x90\x90\xc9\xc3";
+    unsigned int num_bytes = 10;
     uint64_t address = 0x1000;
-    unsigned int max_instructions = 3;
+    unsigned int max_instructions = 1024;
 
     // Disassemble
     PcodeDisassemblyC *disassembly = pcode_disassemble(ctx, bytes, num_bytes, address, max_instructions);
@@ -102,6 +109,8 @@ int main()
 
     pcode_translation_free(translation);
     pcode_context_free(ctx);
+
+    free(sla_bytes);
 
     return 0;
 }
