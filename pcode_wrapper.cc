@@ -6,19 +6,227 @@
 #include <sstream>
 #include <optional>
 
+struct PcodeOpCKey
+{
+    ghidra::OpCode opcode;
+    VarnodeData *output;
+    std::vector<VarnodeData> inputs;
+
+    bool operator==(const PcodeOpCKey &other) const
+    {
+        if (opcode != other.opcode || inputs.size() != other.inputs.size())
+        {
+            return false;
+        }
+
+        // Compare output's address space name, offset, and size
+        if (output && other.output)
+        {
+            std::string name1 = output->space ? output->space->getName() : "";
+            std::string name2 = other.output->space ? other.output->space->getName() : "";
+
+            if (std::strcmp(name1.c_str(), name2.c_str()) != 0 ||
+                output->offset != other.output->offset ||
+                output->size != other.output->size)
+            {
+                return false;
+            }
+        }
+        else if (output || other.output) // One is null, the other is not
+        {
+            return false;
+        }
+
+        // Compare inputs' address space names, offsets, and sizes
+        for (size_t i = 0; i < inputs.size(); ++i)
+        {
+            std::string name1 = inputs[i].space ? inputs[i].space->getName() : "";
+            std::string name2 = other.inputs[i].space ? other.inputs[i].space->getName() : "";
+
+            if (std::strcmp(name1.c_str(), name2.c_str()) != 0 ||
+                inputs[i].offset != other.inputs[i].offset ||
+                inputs[i].size != other.inputs[i].size)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+};
+
+struct VarnodeDataCKey
+{
+    AddrSpace *space;
+    uint64_t offset;
+    uint32_t size;
+
+    bool operator==(const VarnodeDataCKey &other) const
+    {
+        // Compare address space names
+        const char *name1 = space ? space->getName().c_str() : nullptr;
+        const char *name2 = other.space ? other.space->getName().c_str() : nullptr;
+
+        if ((name1 && name2 && std::strcmp(name1, name2) != 0) || (!name1 && name2) || (name1 && !name2))
+        {
+            return false;
+        }
+
+        // Compare offset and size
+        return offset == other.offset && size == other.size;
+    }
+};
+
+struct AddrSpaceCKey
+{
+    AddrSpace *space;
+
+    bool operator==(const AddrSpaceCKey &other) const
+    {
+        // Compare name
+        if (space->getName() != other.space->getName())
+        {
+            return false;
+        }
+
+        // Compare other fields
+        return space->getIndex() == other.space->getIndex() &&
+               space->getAddrSize() == other.space->getAddrSize() &&
+               space->getWordSize() == other.space->getWordSize() &&
+               space->getHighest() == other.space->getHighest() &&
+               space->getPointerLowerBound() == other.space->getPointerLowerBound() &&
+               space->getPointerUpperBound() == other.space->getPointerUpperBound();
+    }
+};
+
+struct DisassemblyInstructionCKey
+{
+    DisassemblyInstruction instruction;
+
+    bool operator==(const DisassemblyInstructionCKey &other) const
+    {
+        if (instruction.m_addr != other.instruction.m_addr || instruction.m_length != other.instruction.m_length)
+        {
+            return false;
+        }
+
+        // Compare mnemonic and body
+        return instruction.m_mnem == other.instruction.m_mnem && instruction.m_body == other.instruction.m_body;
+    }
+};
+
+// Hash specialization for PcodeOpCKey
+namespace std
+{
+    template <>
+    struct hash<PcodeOpCKey>
+    {
+        size_t operator()(const PcodeOpCKey &key) const
+        {
+            // Hash the opcode
+            size_t hashValue = std::hash<uint32_t>()(key.opcode);
+
+            // Hash the output's address space name, if it exists
+            if (key.output && key.output->space)
+            {
+                hashValue ^= (std::hash<std::string>()(key.output->space->getName()) ^ std::hash<uint64_t>()(key.output->offset) ^ std::hash<int32_t>()(key.output->size));
+            }
+
+            // Hash each input's address space name
+            for (auto input : key.inputs)
+            {
+                if (input.space)
+                {
+                    hashValue ^= (std::hash<std::string>()(input.space->getName()) ^ std::hash<uint64_t>()(input.offset) ^ std::hash<int32_t>()(input.size));
+                }
+            }
+
+            return hashValue;
+        }
+    };
+
+    template <>
+    struct hash<VarnodeDataCKey>
+    {
+        size_t operator()(const VarnodeDataCKey &key) const
+        {
+            size_t hashValue = 0;
+
+            // Hash address space name
+            if (key.space)
+            {
+                hashValue ^= std::hash<std::string>()(key.space->getName()) << 1;
+            }
+
+            // Hash offset and size
+            hashValue ^= std::hash<uint64_t>()(key.offset) << 2;
+            hashValue ^= std::hash<int32_t>()(key.size) << 3;
+
+            return hashValue;
+        }
+    };
+
+    template <>
+    struct hash<AddrSpaceCKey>
+    {
+        size_t operator()(const AddrSpaceCKey &key) const
+        {
+            size_t hashValue = 0;
+
+            // Hash the name
+            hashValue ^= std::hash<std::string>()(key.space->getName()) << 1;
+
+            // Combine with other fields
+            hashValue ^= std::hash<uint32_t>()(key.space->getIndex()) << 2;
+            hashValue ^= std::hash<uint32_t>()(key.space->getAddrSize()) << 3;
+            hashValue ^= std::hash<uint32_t>()(key.space->getWordSize()) << 4;
+            hashValue ^= std::hash<uint64_t>()(key.space->getHighest()) << 5;
+            hashValue ^= std::hash<uint64_t>()(key.space->getPointerLowerBound()) << 6;
+            hashValue ^= std::hash<uint64_t>()(key.space->getPointerUpperBound()) << 7;
+
+            return hashValue;
+        }
+    };
+
+    template <>
+    struct hash<DisassemblyInstructionCKey>
+    {
+        size_t operator()(const DisassemblyInstructionCKey &key) const
+        {
+            size_t hashValue = 0;
+
+            // Hash address and length
+            hashValue ^= std::hash<uint64_t>()(key.instruction.m_addr.getOffset()) << 1;
+            hashValue ^= std::hash<uint64_t>()(key.instruction.m_length) << 2;
+
+            // Hash mnemonic and body
+            hashValue ^= std::hash<std::string>()(key.instruction.m_mnem) << 3;
+            hashValue ^= std::hash<std::string>()(key.instruction.m_body) << 4;
+
+            return hashValue;
+        }
+    };
+}
 namespace PcodeMemoryPools
 {
-    static MemoryPool<VarnodeDataC> varnodePool;
-    static MemoryPool<PcodeOpC> pcodeOpPool;
-    static MemoryPool<AddrSpaceC> addrSpacePool;
-    static MemoryPool<DisassemblyInstructionC> disassemblyInstructionPool;
+    static MemoryPool<VarnodeDataC, VarnodeDataCKey> varnodePool;
+    static MemoryPool<PcodeOpC, PcodeOpCKey> pcodeOpPool;
+    static MemoryPool<AddrSpaceC, AddrSpaceCKey> addrSpacePool;
+    static MemoryPool<DisassemblyInstructionC, DisassemblyInstructionCKey> disassemblyInstructionPool;
 }
 
 // Utility function to convert AddrSpace to AddrSpaceC
 inline AddrSpaceC *addrSpaceToC(AddrSpace *addr_space)
 {
-    AddrSpaceC *addr_space_c = PcodeMemoryPools::addrSpacePool.acquire();
+    AddrSpaceC *addr_space_c = PcodeMemoryPools::addrSpacePool.acquireWithKey(AddrSpaceCKey{addr_space});
+
+    // Allocate or reuse the `name` string
+    if (addr_space_c->name)
+    {
+        free((void *)addr_space_c->name); // Free the old name to avoid leaks
+    }
     addr_space_c->name = strdup(addr_space->getName().c_str());
+
     addr_space_c->index = addr_space->getIndex();
     addr_space_c->address_size = addr_space->getAddrSize();
     addr_space_c->word_size = addr_space->getWordSize();
@@ -156,7 +364,17 @@ extern "C"
 
         PcodeDisassemblyC *result = (PcodeDisassemblyC *)malloc(sizeof(PcodeDisassemblyC));
         result->num_instructions = disassembly->m_instructions.size();
-        result->instructions = PcodeMemoryPools::disassemblyInstructionPool.batchAcquire(result->num_instructions); // Acquire a batch of DisassemblyInstructionC pointers
+
+        std::vector<DisassemblyInstructionCKey> keys;
+        keys.reserve(result->num_instructions);
+
+        for (uint32_t i = 0; i < result->num_instructions; ++i)
+        {
+            const DisassemblyInstruction &ins = disassembly->m_instructions[i];
+            keys.emplace_back(DisassemblyInstructionCKey{ins});
+        }
+
+        result->instructions = PcodeMemoryPools::disassemblyInstructionPool.batchAcquire(result->num_instructions, keys); // Acquire a batch of DisassemblyInstructionC pointers
 
         for (uint32_t i = 0; i < result->num_instructions; ++i)
         {
@@ -173,7 +391,10 @@ extern "C"
             auto bodyHolder = std::shared_ptr<char>(new char[ins.m_body.size() + 1], std::default_delete<char[]>());
             std::copy(ins.m_body.c_str(), ins.m_body.c_str() + ins.m_body.size() + 1, bodyHolder.get());
             ins_c->bodyHolder = std::const_pointer_cast<const char>(bodyHolder); // Convert to const char* shared_ptr
-            ins_c->body = ins_c->bodyHolder.get();                               // Set raw pointer for Go access                                                          // Set raw pointer for Go access
+            ins_c->body = ins_c->bodyHolder.get();                               // Set raw pointer for Go access
+
+            ins_c->address = ins.m_addr.getOffset();
+            ins_c->length = ins.m_length;
         }
 
         return result;
@@ -181,21 +402,15 @@ extern "C"
 
     void pcode_disassembly_free(PcodeDisassemblyC *disas)
     {
-        for (uint32_t i = 0; i < disas->num_instructions; ++i)
-        {
-            DisassemblyInstructionC *ins_c = disas->instructions[i];
-            free((void *)ins_c->mnemonic);
-            free((void *)ins_c->body);
-        }
-        free(disas->instructions);
+        // Return the array of instruction pointers to the memory pool
+        PcodeMemoryPools::disassemblyInstructionPool.batchRelease(disas->instructions, disas->num_instructions);
+        // Free the disassembly result structure itself (not managed by the pool)
         free(disas);
     }
 
     PcodeTranslationC *pcode_translate(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, unsigned long long base_address, unsigned int max_instructions, uint32_t flags)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        std::unique_ptr<Translation> translation = nullptr;
-
         auto translationOpt = translateSafe(reinterpret_cast<Context *>(ctx), bytes, num_bytes, base_address, max_instructions, flags);
 
         // Check if translation was successful
@@ -208,8 +423,18 @@ extern "C"
         std::unique_ptr<Translation> &translation = translationOpt.value();
 
         // Allocate the result structure
-        PcodeTranslationC *result = new PcodeTranslationC;
+        PcodeTranslationC *result = (PcodeTranslationC *)malloc(sizeof(PcodeTranslationC));
         result->num_ops = translation->m_ops.size();
+        // generate keys for batchAcquire
+        std::vector<PcodeOpCKey> keys;
+        keys.reserve(result->num_ops);
+
+        for (uint32_t i = 0; i < result->num_ops; ++i)
+        {
+            PcodeOp &op = translation->m_ops[i];
+            keys.emplace_back(PcodeOpCKey{op.m_opcode, op.m_output ? &op.m_output.value() : nullptr, op.m_inputs});
+        }
+
         result->ops = PcodeMemoryPools::pcodeOpPool.batchAcquire(result->num_ops); // Acquire a batch of PcodeOpC pointers
 
         for (uint32_t i = 0; i < result->num_ops; ++i)
@@ -221,7 +446,7 @@ extern "C"
             // Handle output varnode, if it exists
             if (op.m_output)
             {
-                op_c->output = PcodeMemoryPools::varnodePool.acquire();
+                op_c->output = PcodeMemoryPools::varnodePool.acquireWithKey(VarnodeDataCKey{op.m_output->space, op.m_output->offset, op.m_output->size});
                 varnodeDataToC(op_c->output, *op.m_output);
             }
             else
@@ -231,13 +456,26 @@ extern "C"
 
             // Handle input varnodes
             op_c->num_inputs = op.m_inputs.size();
-            op_c->inputs = new VarnodeDataC *[op_c->num_inputs]; // Allocate array of pointers to VarnodeDataC
+            // op_c->inputs = new VarnodeDataC *[op_c->num_inputs]; // Allocate array of pointers to VarnodeDataC
+            // use batchAcquire
+            // generate keys for batchAcquire
+            std::vector<VarnodeDataCKey> keys;
+
+            keys.reserve(op_c->num_inputs);
             for (uint32_t j = 0; j < op_c->num_inputs; ++j)
             {
-                op_c->inputs[j] = PcodeMemoryPools::varnodePool.acquire();
+                keys.emplace_back(VarnodeDataCKey{op.m_inputs[j].space, op.m_inputs[j].offset, op.m_inputs[j].size});
+            }
+
+            op_c->inputs = PcodeMemoryPools::varnodePool.batchAcquire(op_c->num_inputs, keys); // Acquire a batch of VarnodeDataC pointers
+
+            for (uint32_t j = 0; j < op_c->num_inputs; ++j)
+            {
+
                 varnodeDataToC(op_c->inputs[j], op.m_inputs[j]);
             }
         }
+
         return result;
     }
 
@@ -250,19 +488,29 @@ extern "C"
             // Release the output varnode, if it exists
             if (op_c->output)
             {
+                free((void *)op_c->output->space->name); // Free the name string
+                op_c->output->space->name = nullptr;
+                PcodeMemoryPools::addrSpacePool.release(op_c->output->space);
                 PcodeMemoryPools::varnodePool.release(op_c->output);
             }
 
             // Release each input varnode
-            for (uint32_t j = 0; j < op_c->num_inputs; ++j)
+            if (op_c->inputs)
             {
-                PcodeMemoryPools::varnodePool.release(op_c->inputs[j]);
+                for (uint32_t j = 0; j < op_c->num_inputs; ++j)
+                {
+                    free((void *)op_c->inputs[j]->space->name); // Free the name string
+                    op_c->inputs[j]->space->name = nullptr;
+                    PcodeMemoryPools::addrSpacePool.release(op_c->inputs[j]->space);
+                }
+
+                PcodeMemoryPools::varnodePool.batchRelease(op_c->inputs, op_c->num_inputs); // Use batchRelease for input varnodes
             }
-            delete[] op_c->inputs; // Delete the array of input pointers
         }
 
         PcodeMemoryPools::pcodeOpPool.batchRelease(trans->ops, trans->num_ops); // Return PcodeOpC objects to the pool in a batch
-        delete trans;                                                           // Delete the translation struct
+
+        free(trans); // Free the translation struct (not managed by the pool)
     }
 
     const char *pcode_varcode_get_register_name(NativeAddrSpace *space, unsigned long long offset, int32_t size)
@@ -275,6 +523,14 @@ extern "C"
     {
         ghidra::AddrSpace *space = (AddrSpace *)(uintp)offset;
         return addrSpaceToC(space);
+    }
+
+    void pcode_mempool_clear()
+    {
+        PcodeMemoryPools::varnodePool.clear();
+        PcodeMemoryPools::pcodeOpPool.clear();
+        PcodeMemoryPools::addrSpacePool.clear();
+        PcodeMemoryPools::disassemblyInstructionPool.clear();
     }
 
 } // extern "C"

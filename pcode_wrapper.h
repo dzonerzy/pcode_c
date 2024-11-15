@@ -115,6 +115,9 @@ extern "C"
     const char *pcode_varcode_get_register_name(NativeAddrSpace *space, unsigned long long offset, int32_t size);
     AddrSpaceC *pcode_varnode_get_space_from_const(unsigned long long offset);
 
+    // MemoryPool
+    void pcode_mempool_clear();
+
 #ifdef __cplusplus
 }
 #endif

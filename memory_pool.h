@@ -13,19 +13,25 @@ class MemoryPool
 {
     std::stack<T *> pool;
     std::vector<std::unique_ptr<T[]>> allocations;
+    std::vector<size_t> allocationSizes;      // Track sizes of allocations
     std::unordered_map<K, T *> cache;         // Cache for frequently used instances keyed by K
     std::unordered_map<T *, K> reverse_cache; // Reverse lookup to find key by object pointer
 
 public:
     MemoryPool(size_t initial_size = INITIAL_POOL_SIZE)
     {
-        cache.reserve(initial_size);         // Reserve space for cache
-        reverse_cache.reserve(initial_size); // Reserve space for reverse cache
+        cache.reserve(initial_size);
+        reverse_cache.reserve(initial_size);
+        allocations.reserve(initial_size / EXPANSION_CHUNK_SIZE + 1); // Estimate allocations
         expandPool(initial_size);
     }
 
     inline T *acquire()
     {
+        if (pool.size() > 1)
+        {
+            __builtin_prefetch(pool.top()); // Prefetch the next object in the pool
+        }
         if (pool.empty())
         {
             expandPool(EXPANSION_CHUNK_SIZE);
@@ -40,7 +46,8 @@ public:
         auto [it, inserted] = cache.try_emplace(key, nullptr); // Attempt to emplace
         if (!inserted)
         {
-            return it->second; // If already in cache, return cached instance
+            __builtin_prefetch(it->second); // Prefetch the cached object
+            return it->second;              // If already in cache, return cached instance
         }
         T *instance = acquire();       // Otherwise, acquire new instance
         it->second = instance;         // Update cache entry
@@ -48,15 +55,30 @@ public:
         return instance;
     }
 
-    T **batchAcquire(size_t count)
+    T **batchAcquire(size_t count, const std::vector<K> &keys = {})
     {
-        thread_local std::vector<T *> temp_array(512);
-        temp_array.resize(count); // Adjust size for the current batch
+        T **array = new T *[count]; // Dynamically allocate memory for the array
+
         for (size_t i = 0; i < count; ++i)
         {
-            temp_array[i] = acquire();
+            if (i + 1 < count && !pool.empty())
+            {
+                __builtin_prefetch(pool.top()); // Prefetch the next object in the pool
+            }
+
+            if (!keys.empty() && i < keys.size())
+            {
+                // Use acquireWithKey if a key is provided
+                array[i] = acquireWithKey(keys[i]);
+            }
+            else
+            {
+                // Regular acquire for elements without keys
+                array[i] = acquire();
+            }
         }
-        return temp_array.data(); // Return pointer to the internal array
+
+        return array; // Return the dynamically allocated array
     }
 
     T *acquireBlock(size_t count)
@@ -67,32 +89,45 @@ public:
         return blockPtr;
     }
 
-    T **batchAcquireContiguous(size_t count)
+    T **batchAcquireContiguous(size_t count, const std::vector<K> &keys = {})
     {
-        thread_local std::vector<T *> temp_array(512);
+        thread_local std::vector<T *> temp_array;
         temp_array.resize(count);
+
         T *block = acquireBlock(count);
+
         for (size_t i = 0; i < count; ++i)
         {
-            temp_array[i] = &block[i];
+            if (i + 1 < count)
+            {
+                __builtin_prefetch(pool.top()); // Prefetch the next object in the pool
+            }
+
+            if (!keys.empty() && i < keys.size())
+            {
+                // Cache each contiguous block element with a key
+                temp_array[i] = acquireWithKey(keys[i]);
+            }
+            else
+            {
+                temp_array[i] = &block[i];
+            }
         }
+
         return temp_array.data();
     }
 
     inline void release(T *obj)
     {
-        // Check if the object is in the cache
-        auto reverse_it = reverse_cache.find(obj);
-        if (reverse_it != reverse_cache.end())
+        if (reverse_cache.erase(obj))
         {
-            // If the object is cached, do not release it back to the pool
+            // If found and erased from reverse_cache, skip adding to pool
             return;
         }
-        // If not in cache, return the object to the pool
-        pool.push(obj);
+        pool.push(obj); // Return the object to the pool
         releaseCount++;
         if (releaseCount % 100 == 0)
-        { // Check every 100 releases
+        {
             shrinkToFit();
         }
     }
@@ -112,16 +147,25 @@ public:
     {
         for (size_t i = 0; i < count; ++i)
         {
-            release(array[i]);
+            if (i + 1 < count)
+            {
+                __builtin_prefetch(array[i + 1]); // Prefetch the next object to release
+            }
+            auto reverse_it = reverse_cache.find(array[i]);
+            if (reverse_it == reverse_cache.end())
+            {
+                pool.push(array[i]); // Only return to pool if not in cache
+            }
         }
-        delete[] array;
+        delete[] array; // Safe deletion of dynamically allocated array
     }
 
     void shrinkToFit()
     {
-        while (!allocations.empty() && pool.size() <= allocations.back()->size())
+        while (!allocations.empty() && pool.size() <= allocationSizes.back())
         {
-            allocations.pop_back(); // Remove unused blocks
+            allocations.pop_back();     // Remove the block from allocations
+            allocationSizes.pop_back(); // Remove the corresponding size
         }
     }
 
@@ -133,8 +177,14 @@ public:
         shrinkToFit(); // Free unused blocks
     }
 
+    size_t poolSize() const { return pool.size(); }
+    size_t cacheSize() const { return cache.size(); }
+    size_t reverseCacheSize() const { return reverse_cache.size(); }
+    size_t allocationCount() const { return allocations.size(); }
+
 private:
     size_t releaseCount = 0;
+    size_t lastShrinkReleaseCount = 0;
 
     inline void expandPool(size_t count)
     {
@@ -142,8 +192,13 @@ private:
         T *block_ptr = new_block.get();
         for (size_t i = 0; i < count; ++i)
         {
+            if (i + 1 < count)
+            {
+                __builtin_prefetch(&block_ptr[i + 1]); // Prefetch the next object in the block
+            }
             pool.push(block_ptr + i); // Push pointers sequentially
         }
         allocations.push_back(std::move(new_block));
+        allocationSizes.push_back(count);
     }
 };

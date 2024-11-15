@@ -538,12 +538,6 @@ namespace ghidra
     return res;
   }
 
-  vectorbuf::vectorbuf(const std::vector<uint8_t> &data) : buffer(data)
-  {
-    char *begin = const_cast<char *>(reinterpret_cast<const char *>(buffer.data()));
-    this->setg(begin, begin, begin + buffer.size());
-  }
-
   /// \param ld is the LoadImage to draw program bytes from
   /// \param c_db is the context database
   Sleigh::Sleigh(LoadImage *ld, ContextDatabase *c_db)

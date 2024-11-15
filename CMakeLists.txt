@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18...3.22)
 project(pcode_c)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.14)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -78,7 +78,7 @@ add_dependencies(pcode sleigh)
 
 # create main test and link with pcode
 
-add_executable(pcode_test test/main.c)
+add_executable(pcode_test test/main.cc)
 target_include_directories(pcode_test PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(pcode_test PRIVATE pcode)
 
@@ -99,7 +99,7 @@ function(generate_sla_files TARGET)
 endfunction()
 
 # Call function to generate .sla files
-generate_sla_files(sleigh)
+#generate_sla_files(sleigh)
 
 # Ensure the .sla files are generated before building pcode
 add_custom_target(generate_sla ALL DEPENDS sleigh)
