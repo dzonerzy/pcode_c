@@ -20,6 +20,7 @@
 #define __SLEIGH_HH__
 
 #include "sleighbase.hh"
+#include "span.h"
 
 namespace ghidra
 {
@@ -162,10 +163,21 @@ namespace ghidra
   class vectorbuf : public std::streambuf
   {
   public:
-    vectorbuf(const std::vector<uint8_t> &data);
+    // Original constructor
+    vectorbuf(const std::vector<uint8_t> &data) : buffer(data)
+    {
+      setg(reinterpret_cast<char *>(buffer.data()), reinterpret_cast<char *>(buffer.data()), reinterpret_cast<char *>(buffer.data() + buffer.size()));
+    }
+
+    // New constructor for raw pointer and size
+    vectorbuf(const uint8_t *data, std::size_t size) : buffer()
+    { // Empty buffer in this case
+      char *p = const_cast<char *>(reinterpret_cast<const char *>(data));
+      setg(p, p, p + size); // Set the input sequence pointers
+    }
 
   private:
-    std::vector<uint8_t> buffer;
+    std::vector<uint8_t> buffer; // Only used in the original vector constructor
   };
 
   /// \brief A full SLEIGH engine
@@ -195,7 +207,7 @@ namespace ghidra
     virtual ~Sleigh(void);                            ///< Destructor
     void reset(LoadImage *ld, ContextDatabase *c_db); ///< Reset the engine for a new program
     void fastReset();                                 ///< Quickly reset the engine
-    virtual void initialize(const std::vector<uint8_t> &byteArray);
+    virtual void initialize(const Span<uint8_t> &byteArray);
     virtual void registerContext(const string &name, int4 sbit, int4 ebit);
     virtual void setContextDefault(const string &nm, uintm val);
     virtual void allowContextSet(bool val) const;

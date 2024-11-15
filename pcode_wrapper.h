@@ -58,13 +58,13 @@ extern "C"
     {
         uint32_t opcode;
         VarnodeDataC *output;
-        VarnodeDataC *inputs;
+        VarnodeDataC **inputs;
         uint32_t num_inputs;
     } PcodeOpC;
 
     typedef struct
     {
-        PcodeOpC *ops;
+        PcodeOpC **ops;
         uint32_t num_ops;
     } PcodeTranslationC;
 
@@ -72,13 +72,15 @@ extern "C"
     {
         uint64_t address;
         uint64_t length;
-        const char *mnemonic;
-        const char *body;
+        const char *mnemonic;                       // Store as const char* for Go compatibility
+        const char *body;                           // Store as const char* for Go compatibility
+        std::shared_ptr<const char> mnemonicHolder; // Internal holder for memory management
+        std::shared_ptr<const char> bodyHolder;     // Internal holder for memory management
     } DisassemblyInstructionC;
 
     typedef struct
     {
-        DisassemblyInstructionC *instructions;
+        DisassemblyInstructionC **instructions;
         uint32_t num_instructions;
     } PcodeDisassemblyC;
 

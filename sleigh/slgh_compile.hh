@@ -21,6 +21,7 @@
 #include "sleighbase.hh"
 #include "pcodecompile.hh"
 #include "filemanage.hh"
+#include "span.h"
 #include <iostream>
 #include <sstream>
 
@@ -486,7 +487,7 @@ namespace ghidra
     void recordNop(void);
 
     // Virtual functions (not used by the compiler)
-    virtual void initialize(const std::vector<uint8_t> &byteArray) {}
+    virtual void initialize(const Span<uint8_t> &byteArray) {}
     virtual int4 instructionLength(const Address &baseaddr) const { return 0; }
     virtual int4 oneInstruction(PcodeEmit &emit, const Address &baseaddr) const { return 0; }
     virtual int4 printAssembly(AssemblyEmit &emit, const Address &baseaddr) const { return 0; }

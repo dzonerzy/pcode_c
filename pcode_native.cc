@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_set>
 #include <memory>
+#include <span>
 
 #include "sleigh/error.hh"
 #include "sleigh/loadimage.hh"
@@ -251,9 +252,9 @@ public:
     Document *m_document;
     Element *m_tags;
     std::unique_ptr<Sleigh> m_sleigh;
-    std::vector<Byte> m_slaBytes;
+    Span<const uint8_t> m_slaBytes;
 
-    Context(const std::vector<Byte> &slaBytes)
+    Context(Span<const uint8_t> &slaBytes)
     {
         LOG("Context %p created", this);
 
@@ -293,9 +294,11 @@ public:
         m_loader.setData(address, (const unsigned char *)bytes, num_bytes);
         disassembly->m_instructions.reserve(10);
 
+        AddrSpace *codeSpace = m_sleigh->getDefaultCodeSpace();
+
         while ((offset < num_bytes) && (!max_instructions || (num_instructions < max_instructions)))
         {
-            Address addr(m_sleigh->getDefaultCodeSpace(), address + offset);
+            Address addr(codeSpace, address + offset);
 
             disassembly->m_instructions.emplace_back();
             DisassemblyInstruction &ins = disassembly->m_instructions.back();

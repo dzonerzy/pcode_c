@@ -4,22 +4,20 @@
 #include <cstring>
 #include <cstdlib>
 #include <sstream>
+#include <optional>
 
 namespace PcodeMemoryPools
 {
     static MemoryPool<VarnodeDataC> varnodePool;
     static MemoryPool<PcodeOpC> pcodeOpPool;
-}
-
-std::vector<uint8_t> convertToVector(const unsigned char *data, size_t size)
-{
-    return {data, data + size};
+    static MemoryPool<AddrSpaceC> addrSpacePool;
+    static MemoryPool<DisassemblyInstructionC> disassemblyInstructionPool;
 }
 
 // Utility function to convert AddrSpace to AddrSpaceC
-AddrSpaceC *addrSpaceToC(AddrSpace *addr_space)
+inline AddrSpaceC *addrSpaceToC(AddrSpace *addr_space)
 {
-    AddrSpaceC *addr_space_c = (AddrSpaceC *)malloc(sizeof(AddrSpaceC));
+    AddrSpaceC *addr_space_c = PcodeMemoryPools::addrSpacePool.acquire();
     addr_space_c->name = strdup(addr_space->getName().c_str());
     addr_space_c->index = addr_space->getIndex();
     addr_space_c->address_size = addr_space->getAddrSize();
@@ -82,11 +80,36 @@ RegisterInfoListC *mapToRegisterInfoListC(const std::map<VarnodeData, std::strin
     return reg_list;
 }
 
+std::optional<std::unique_ptr<Translation>> translateSafe(Context *context, const char *bytes, unsigned int num_bytes, uint64_t base_address, unsigned int max_instructions, uint32_t flags)
+{
+    try
+    {
+        return context->translate(bytes, num_bytes, base_address, max_instructions, flags);
+    }
+    catch (const ghidra::LowlevelError &)
+    {
+        return std::nullopt; // Return nullopt instead of throwing
+    }
+}
+
+std::optional<std::unique_ptr<Disassembly>> disassembleSafe(Context *context, const char *bytes, unsigned int num_bytes, uint64_t address, unsigned int max_instructions)
+{
+    try
+    {
+        return context->disassemble(bytes, num_bytes, address, max_instructions);
+    }
+    catch (const ghidra::LowlevelError &)
+    {
+        return std::nullopt; // Return nullopt on error
+    }
+}
+
 extern "C"
 {
     PcodeContext *pcode_context_create(unsigned char *slaBytes, size_t slaSize)
     {
-        return reinterpret_cast<PcodeContext *>(new Context(convertToVector(slaBytes, slaSize)));
+        Span<const uint8_t> slaSpan(slaBytes, slaSize); // Create a Span directly from pointer and size
+        return reinterpret_cast<PcodeContext *>(new Context(slaSpan));
     }
 
     void pcode_context_free(PcodeContext *ctx)
@@ -118,30 +141,39 @@ extern "C"
     PcodeDisassemblyC *pcode_disassemble(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, unsigned long long address, unsigned int max_instructions)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        std::unique_ptr<Disassembly> disassembly;
 
-        try
+        // Call disassembleSafe to attempt disassembly
+        auto disassemblyOpt = disassembleSafe(context, bytes, num_bytes, address, max_instructions);
+
+        // Check if disassembly was successful
+        if (!disassemblyOpt.has_value())
         {
-            disassembly = context->disassemble(bytes, num_bytes, address, max_instructions);
+            return nullptr; // Handle error by returning null if disassembly failed
         }
-        catch (const ghidra::LowlevelError &e)
-        {
-            return NULL;
-        }
+
+        // Access the successful disassembly from the optional
+        std::unique_ptr<Disassembly> &disassembly = disassemblyOpt.value();
 
         PcodeDisassemblyC *result = (PcodeDisassemblyC *)malloc(sizeof(PcodeDisassemblyC));
         result->num_instructions = disassembly->m_instructions.size();
-        result->instructions = (DisassemblyInstructionC *)malloc(result->num_instructions * sizeof(DisassemblyInstructionC));
+        result->instructions = PcodeMemoryPools::disassemblyInstructionPool.batchAcquire(result->num_instructions); // Acquire a batch of DisassemblyInstructionC pointers
 
         for (uint32_t i = 0; i < result->num_instructions; ++i)
         {
             DisassemblyInstruction &ins = disassembly->m_instructions[i];
-            DisassemblyInstructionC &ins_c = result->instructions[i];
+            DisassemblyInstructionC *ins_c = result->instructions[i];
 
-            ins_c.address = ins.m_addr.getOffset();
-            ins_c.length = ins.m_length;
-            ins_c.mnemonic = strdup(ins.m_mnem.c_str());
-            ins_c.body = strdup(ins.m_body.c_str());
+            // Allocate storage for mnemonic with null-termination
+            auto mnemonicHolder = std::shared_ptr<char>(new char[ins.m_mnem.size() + 1], std::default_delete<char[]>());
+            std::copy(ins.m_mnem.c_str(), ins.m_mnem.c_str() + ins.m_mnem.size() + 1, mnemonicHolder.get());
+            ins_c->mnemonicHolder = std::const_pointer_cast<const char>(mnemonicHolder); // Convert to const char* shared_ptr
+            ins_c->mnemonic = ins_c->mnemonicHolder.get();                               // Set raw pointer for Go access
+
+            // Allocate storage for body with null-termination
+            auto bodyHolder = std::shared_ptr<char>(new char[ins.m_body.size() + 1], std::default_delete<char[]>());
+            std::copy(ins.m_body.c_str(), ins.m_body.c_str() + ins.m_body.size() + 1, bodyHolder.get());
+            ins_c->bodyHolder = std::const_pointer_cast<const char>(bodyHolder); // Convert to const char* shared_ptr
+            ins_c->body = ins_c->bodyHolder.get();                               // Set raw pointer for Go access                                                          // Set raw pointer for Go access
         }
 
         return result;
@@ -151,9 +183,9 @@ extern "C"
     {
         for (uint32_t i = 0; i < disas->num_instructions; ++i)
         {
-            DisassemblyInstructionC &ins_c = disas->instructions[i];
-            free((void *)ins_c.mnemonic);
-            free((void *)ins_c.body);
+            DisassemblyInstructionC *ins_c = disas->instructions[i];
+            free((void *)ins_c->mnemonic);
+            free((void *)ins_c->body);
         }
         free(disas->instructions);
         free(disas);
@@ -164,41 +196,46 @@ extern "C"
         Context *context = reinterpret_cast<Context *>(ctx);
         std::unique_ptr<Translation> translation = nullptr;
 
-        try
+        auto translationOpt = translateSafe(reinterpret_cast<Context *>(ctx), bytes, num_bytes, base_address, max_instructions, flags);
+
+        // Check if translation was successful
+        if (!translationOpt.has_value())
         {
-            translation = context->translate(bytes, num_bytes, base_address, max_instructions, flags);
-        }
-        catch (const ghidra::LowlevelError &e)
-        {
-            return NULL;
+            return nullptr; // Handle error by returning null if translation failed
         }
 
-        PcodeTranslationC *result = (PcodeTranslationC *)malloc(sizeof(PcodeTranslationC));
+        // Access the successful translation from the optional
+        std::unique_ptr<Translation> &translation = translationOpt.value();
+
+        // Allocate the result structure
+        PcodeTranslationC *result = new PcodeTranslationC;
         result->num_ops = translation->m_ops.size();
-        result->ops = (PcodeOpC *)malloc(result->num_ops * sizeof(PcodeOpC));
+        result->ops = PcodeMemoryPools::pcodeOpPool.batchAcquire(result->num_ops); // Acquire a batch of PcodeOpC pointers
 
         for (uint32_t i = 0; i < result->num_ops; ++i)
         {
             PcodeOp &op = translation->m_ops[i];
-            PcodeOpC &op_c = result->ops[i];
+            PcodeOpC *op_c = result->ops[i];
+            op_c->opcode = op.m_opcode;
 
-            op_c.opcode = op.m_opcode;
-
+            // Handle output varnode, if it exists
             if (op.m_output)
             {
-                op_c.output = (VarnodeDataC *)malloc(sizeof(VarnodeDataC));
-                varnodeDataToC(op_c.output, *op.m_output);
+                op_c->output = PcodeMemoryPools::varnodePool.acquire();
+                varnodeDataToC(op_c->output, *op.m_output);
             }
             else
             {
-                op_c.output = NULL;
+                op_c->output = nullptr;
             }
 
-            op_c.num_inputs = op.m_inputs.size();
-            op_c.inputs = (VarnodeDataC *)malloc(op_c.num_inputs * sizeof(VarnodeDataC));
-            for (uint32_t j = 0; j < op_c.num_inputs; ++j)
+            // Handle input varnodes
+            op_c->num_inputs = op.m_inputs.size();
+            op_c->inputs = new VarnodeDataC *[op_c->num_inputs]; // Allocate array of pointers to VarnodeDataC
+            for (uint32_t j = 0; j < op_c->num_inputs; ++j)
             {
-                varnodeDataToC(&op_c.inputs[j], op.m_inputs[j]);
+                op_c->inputs[j] = PcodeMemoryPools::varnodePool.acquire();
+                varnodeDataToC(op_c->inputs[j], op.m_inputs[j]);
             }
         }
         return result;
@@ -208,22 +245,24 @@ extern "C"
     {
         for (uint32_t i = 0; i < trans->num_ops; ++i)
         {
-            PcodeOpC &op_c = trans->ops[i];
-            if (op_c.output)
+            PcodeOpC *op_c = trans->ops[i];
+
+            // Release the output varnode, if it exists
+            if (op_c->output)
             {
-                free((void *)op_c.output->space->name);
-                free(op_c.output->space);
-                free(op_c.output);
+                PcodeMemoryPools::varnodePool.release(op_c->output);
             }
-            for (uint32_t j = 0; j < op_c.num_inputs; ++j)
+
+            // Release each input varnode
+            for (uint32_t j = 0; j < op_c->num_inputs; ++j)
             {
-                free((void *)op_c.inputs[j].space->name);
-                free(op_c.inputs[j].space);
+                PcodeMemoryPools::varnodePool.release(op_c->inputs[j]);
             }
-            free(op_c.inputs);
+            delete[] op_c->inputs; // Delete the array of input pointers
         }
-        free(trans->ops);
-        free(trans);
+
+        PcodeMemoryPools::pcodeOpPool.batchRelease(trans->ops, trans->num_ops); // Return PcodeOpC objects to the pool in a batch
+        delete trans;                                                           // Delete the translation struct
     }
 
     const char *pcode_varcode_get_register_name(NativeAddrSpace *space, unsigned long long offset, int32_t size)

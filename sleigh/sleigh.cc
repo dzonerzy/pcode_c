@@ -596,7 +596,7 @@ namespace ghidra
 
   /// The .sla file from the document store is loaded and cache objects are prepared
   /// \param slaBytes is the byte array of the .sla file
-  void Sleigh::initialize(const std::vector<uint8_t> &slaBytes)
+  void Sleigh::initialize(const Span<uint8_t> &slaBytes)
   {
     if (!isInitialized())
     {
@@ -605,7 +605,7 @@ namespace ghidra
       if (slaBytes.empty())
         throw std::runtime_error("SLA byte array is empty");
 
-      vectorbuf buf(slaBytes);
+      vectorbuf buf(slaBytes.data(), slaBytes.size());
       std::istream s(&buf);
 
       decoder.ingestStream(s);

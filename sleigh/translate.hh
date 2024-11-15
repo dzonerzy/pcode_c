@@ -23,6 +23,7 @@
 
 #include "pcoderaw.hh"
 #include "float.hh"
+#include "span.h"
 
 namespace ghidra
 {
@@ -345,7 +346,7 @@ namespace ghidra
     /// to configure it.
     /// \param store is a set of configuration documents
 
-    virtual void initialize(const std::vector<uint8_t> &byteArray) = 0;
+    virtual void initialize(const Span<uint8_t> &byteArray) = 0;
 
     /// \brief Add a new context variable to the model for this processor
     ///
