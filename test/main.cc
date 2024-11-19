@@ -76,6 +76,14 @@ int main()
 
     // count how much time it takes to disassemble 100000 times
 
+    RegisterInfoListC *list = pcode_get_registerinfo_list(ctx);
+    for (uint32_t i = 0; i < list->count; i++)
+    {
+        RegisterInfoC *reg = list->registers[i];
+        printf("Register: %s\n", reg->name);
+    }
+    pcode_registerinfo_list_free(list);
+
     // take the time before the loop
     auto start = clock();
 

@@ -115,7 +115,38 @@ struct DisassemblyInstructionCKey
     }
 };
 
-// Hash specialization for PcodeOpCKey
+struct RegisterInfoCKey
+{
+    VarnodeData node;
+    std::string name;
+
+    bool operator==(const RegisterInfoCKey &other) const
+    {
+        // Compare name
+        if (name != other.name)
+        {
+            return false;
+        }
+
+        // Compare the node's address space name, if it exists
+        if (node.space && other.node.space)
+        {
+            if (node.space->getName() != other.node.space->getName() ||
+                node.offset != other.node.offset ||
+                node.size != other.node.size)
+            {
+                return false;
+            }
+        }
+        else if (node.space || other.node.space) // One is null, the other is not
+        {
+            return false;
+        }
+
+        return true;
+    }
+};
+
 namespace std
 {
     template <>
@@ -206,6 +237,26 @@ namespace std
             return hashValue;
         }
     };
+
+    template <>
+    struct hash<RegisterInfoCKey>
+    {
+        size_t operator()(const RegisterInfoCKey &key) const
+        {
+            size_t hashValue = 0;
+
+            // Hash the name
+            hashValue ^= std::hash<std::string>()(key.name) << 1;
+
+            // Hash the node's address space name, if it exists
+            if (key.node.space)
+            {
+                hashValue ^= (std::hash<std::string>()(key.node.space->getName()) ^ std::hash<uint64_t>()(key.node.offset) ^ std::hash<int32_t>()(key.node.size));
+            }
+
+            return hashValue;
+        }
+    };
 }
 namespace PcodeMemoryPools
 {
@@ -213,6 +264,7 @@ namespace PcodeMemoryPools
     static MemoryPool<PcodeOpC, PcodeOpCKey> pcodeOpPool;
     static MemoryPool<AddrSpaceC, AddrSpaceCKey> addrSpacePool;
     static MemoryPool<DisassemblyInstructionC, DisassemblyInstructionCKey> disassemblyInstructionPool;
+    static MemoryPool<RegisterInfoC, RegisterInfoCKey> registerInfoPool;
 }
 
 // Utility function to convert AddrSpace to AddrSpaceC
@@ -275,13 +327,32 @@ RegisterInfoListC *mapToRegisterInfoListC(const std::map<VarnodeData, std::strin
 {
     RegisterInfoListC *reg_list = (RegisterInfoListC *)malloc(sizeof(RegisterInfoListC));
     reg_list->count = regmap.size();
-    reg_list->registers = (RegisterInfoC *)malloc(reg_list->count * sizeof(RegisterInfoC));
+    // use batchAcquire to allocate a batch of RegisterInfoC pointers
+    // create keys for each RegisterInfoC
+    std::vector<RegisterInfoCKey> keys;
+    keys.reserve(reg_list->count);
+    for (const auto &pair : regmap)
+    {
+        keys.emplace_back(RegisterInfoCKey{pair.first, pair.second});
+    }
+    reg_list->registers = PcodeMemoryPools::registerInfoPool.batchAcquire(reg_list->count, keys);
 
     uint32_t i = 0;
     for (const auto &pair : regmap)
     {
-        varnodeDataToC(&reg_list->registers[i].varnode, pair.first);
-        reg_list->registers[i].name = strdup(pair.second.c_str());
+        RegisterInfoC *reg_info = reg_list->registers[i];
+        // take caution with strdup, it allocates memory and it's slower
+        // do as the addrspaceToC function does, allocate the memory once and reuse it
+
+        if (reg_info->name)
+        {
+            free((void *)reg_info->name); // Free the old name to avoid leaks
+        }
+        reg_info->name = strdup(pair.second.c_str());
+        reg_info->varnode = PcodeMemoryPools::varnodePool.acquireWithKey(VarnodeDataCKey{pair.first.space, pair.first.offset, pair.first.size});
+
+        varnodeDataToC(reg_info->varnode, pair.first);
+
         i++;
     }
 
@@ -332,12 +403,20 @@ extern "C"
         context->m_context_db.setVariableDefault(name, val);
     }
 
-    RegisterInfoListC *pcode_context_get_all_registers(PcodeContext *ctx)
+    RegisterInfoListC *pcode_get_registerinfo_list(PcodeContext *ctx)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
         std::map<VarnodeData, std::string> regmap;
         context->m_sleigh->getAllRegisters(regmap);
         return mapToRegisterInfoListC(regmap);
+    }
+
+    void pcode_registerinfo_list_free(RegisterInfoListC *list)
+    {
+        // Release the array of RegisterInfoC pointers to the memory pool
+        PcodeMemoryPools::registerInfoPool.batchRelease(list->registers, list->count);
+        // Free the RegisterInfoListC structure itself (not managed by the pool)
+        free(list);
     }
 
     const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, unsigned long long offset, int32_t size)
@@ -411,7 +490,7 @@ extern "C"
     PcodeTranslationC *pcode_translate(PcodeContext *ctx, const char *bytes, unsigned int num_bytes, unsigned long long base_address, unsigned int max_instructions, uint32_t flags)
     {
         Context *context = reinterpret_cast<Context *>(ctx);
-        auto translationOpt = translateSafe(reinterpret_cast<Context *>(ctx), bytes, num_bytes, base_address, max_instructions, flags);
+        auto translationOpt = translateSafe(context, bytes, num_bytes, base_address, max_instructions, flags);
 
         // Check if translation was successful
         if (!translationOpt.has_value())

@@ -4,18 +4,23 @@
 #include <memory>
 #include <stack>
 #include <unordered_map>
+#include <list>
 
-constexpr size_t INITIAL_POOL_SIZE = 1000;
-constexpr size_t EXPANSION_CHUNK_SIZE = 500;
+constexpr size_t INITIAL_POOL_SIZE = 2048;
+constexpr size_t EXPANSION_CHUNK_SIZE = 1024;
 
 template <typename T, typename K>
 class MemoryPool
 {
     std::stack<T *> pool;
     std::vector<std::unique_ptr<T[]>> allocations;
-    std::vector<size_t> allocationSizes;      // Track sizes of allocations
-    std::unordered_map<K, T *> cache;         // Cache for frequently used instances keyed by K
+    std::vector<size_t> allocationSizes; // Track sizes of allocations
+    // std::unordered_map<K, T *> cache;         // Cache for frequently used instances keyed by K
+    std::unordered_map<K, std::pair<T *, typename std::list<K>::iterator>> cache;
     std::unordered_map<T *, K> reverse_cache; // Reverse lookup to find key by object pointer
+
+    std::list<K> usageOrder; // Tracks usage order, MRU at the front, LRU at the back
+    size_t cacheLimit = 1024;
 
 public:
     MemoryPool(size_t initial_size = INITIAL_POOL_SIZE)
@@ -43,15 +48,29 @@ public:
 
     T *acquireWithKey(const K &key)
     {
-        auto [it, inserted] = cache.try_emplace(key, nullptr); // Attempt to emplace
-        if (!inserted)
+        auto it = cache.find(key);
+        if (it != cache.end())
         {
-            __builtin_prefetch(it->second); // Prefetch the cached object
-            return it->second;              // If already in cache, return cached instance
+            // Move the key to the front of the usageOrder (mark as MRU)
+            usageOrder.splice(usageOrder.begin(), usageOrder, it->second.second);
+            __builtin_prefetch(it->second.first); // Prefetch the cached object
+            return it->second.first;              // Return the cached object
         }
-        T *instance = acquire();       // Otherwise, acquire new instance
-        it->second = instance;         // Update cache entry
-        reverse_cache[instance] = key; // Track reverse mapping
+
+        // Key not in cache; acquire a new object
+        T *instance = acquire();
+
+        // Add to usageOrder and cache
+        usageOrder.push_front(key);                  // Add key to MRU position
+        cache[key] = {instance, usageOrder.begin()}; // Store object and iterator in cache
+        reverse_cache[instance] = key;               // Update reverse cache
+
+        // Evict LRU if cache exceeds limit
+        if (cache.size() > cacheLimit)
+        {
+            evictLRU(); // Evict least recently used object
+        }
+
         return instance;
     }
 
@@ -89,34 +108,6 @@ public:
         return blockPtr;
     }
 
-    T **batchAcquireContiguous(size_t count, const std::vector<K> &keys = {})
-    {
-        thread_local std::vector<T *> temp_array;
-        temp_array.resize(count);
-
-        T *block = acquireBlock(count);
-
-        for (size_t i = 0; i < count; ++i)
-        {
-            if (i + 1 < count)
-            {
-                __builtin_prefetch(pool.top()); // Prefetch the next object in the pool
-            }
-
-            if (!keys.empty() && i < keys.size())
-            {
-                // Cache each contiguous block element with a key
-                temp_array[i] = acquireWithKey(keys[i]);
-            }
-            else
-            {
-                temp_array[i] = &block[i];
-            }
-        }
-
-        return temp_array.data();
-    }
-
     inline void release(T *obj)
     {
         if (reverse_cache.erase(obj))
@@ -130,6 +121,9 @@ public:
         {
             shrinkToFit();
         }
+
+        // set the object to nullptr to avoid dangling pointers
+        obj = nullptr;
     }
 
     void releaseWithKey(const K &key)
@@ -137,9 +131,26 @@ public:
         auto it = cache.find(key);
         if (it != cache.end())
         {
-            reverse_cache.erase(it->second); // Remove from reverse cache
-            pool.push(it->second);           // Return object to the pool
-            cache.erase(it);                 // Remove from cache
+            // Remove the object from reverse cache
+            reverse_cache.erase(it->second.first);
+
+            // Remove from usageOrder
+            usageOrder.erase(it->second.second);
+
+            // Return the object to the pool
+            pool.push(it->second.first);
+
+            // Remove from cache
+            cache.erase(it);
+
+            // Shrink the pool if necessary
+            if (releaseCount % 100 == 0)
+            {
+                shrinkToFit();
+            }
+
+            // even if we don't really release anything, we still need to update releaseCount
+            releaseCount++;
         }
     }
 
@@ -158,14 +169,42 @@ public:
             }
         }
         delete[] array; // Safe deletion of dynamically allocated array
+        // set the array to nullptr to avoid dangling pointers
+        array = nullptr;
+        releaseCount += count;
     }
 
     void shrinkToFit()
     {
         while (!allocations.empty() && pool.size() <= allocationSizes.back())
         {
-            allocations.pop_back();     // Remove the block from allocations
-            allocationSizes.pop_back(); // Remove the corresponding size
+            // Ensure no objects in the pool refer to this block
+            T *block_start = allocations.back().get();
+            T *block_end = block_start + allocationSizes.back();
+
+            std::stack<T *> temp_pool;
+            while (!pool.empty())
+            {
+                T *obj = pool.top();
+                pool.pop();
+                if (obj >= block_start && obj < block_end)
+                {
+                    // Object belongs to the block being deallocated; skip it
+                    continue;
+                }
+                temp_pool.push(obj); // Keep the valid object
+            }
+
+            // Restore valid objects to the pool
+            while (!temp_pool.empty())
+            {
+                pool.push(temp_pool.top());
+                temp_pool.pop();
+            }
+
+            // Now it's safe to remove the block
+            allocations.pop_back();
+            allocationSizes.pop_back();
         }
     }
 
@@ -175,6 +214,24 @@ public:
         cache.clear();
         reverse_cache.clear();
         shrinkToFit(); // Free unused blocks
+    }
+
+    inline void evictLRU()
+    {
+        // Get the least recently used key (back of usageOrder list)
+        const K &lruKey = usageOrder.back();
+
+        // Get the object associated with the LRU key
+        T *object = cache[lruKey].first;
+
+        // Remove from cache and reverse_cache
+        cache.erase(lruKey);
+        reverse_cache.erase(object);
+
+        // Remove the key from the usageOrder list
+        usageOrder.pop_back();
+
+        // Now the object is no longer in the cache and can be handled by release
     }
 
     size_t poolSize() const { return pool.size(); }

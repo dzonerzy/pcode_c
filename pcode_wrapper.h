@@ -86,13 +86,13 @@ extern "C"
 
     typedef struct RegisterInfoC
     {
-        VarnodeDataC varnode;
+        VarnodeDataC *varnode;
         const char *name;
     } RegisterInfoC;
 
     typedef struct RegisterInfoListC
     {
-        RegisterInfoC *registers;
+        RegisterInfoC **registers;
         uint32_t count;
     } RegisterInfoListC;
 
@@ -100,7 +100,8 @@ extern "C"
     PcodeContext *pcode_context_create(unsigned char *slaBytes, size_t slaSize);
     void pcode_context_free(PcodeContext *ctx);
     void pcode_context_set_variable_default(PcodeContext *ctx, const char *nm, uint32_t val);
-    RegisterInfoListC *pcode_context_get_all_registers(PcodeContext *ctx);
+    RegisterInfoListC *pcode_get_registerinfo_list(PcodeContext *ctx);
+    void pcode_registerinfo_list_free(RegisterInfoListC *list);
     const char *pcode_context_get_register_name(PcodeContext *ctx, NativeAddrSpace *space, unsigned long long offset, int32_t size);
 
     // Disassemble code
